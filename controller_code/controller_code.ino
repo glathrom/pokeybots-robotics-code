@@ -2,6 +2,8 @@
 #include <WiFi.h>
 #include <Wire.h>
 
+// six byte mac address for the controller board obtained
+// from the get_mac_address program
 uint8_t broadcastAddress[] = {0x94, 0xa9, 0x90, 0x7c, 0x40, 0x40};
 
 float PositionX;
