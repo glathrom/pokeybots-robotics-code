@@ -38,7 +38,7 @@ void setup() {
   Serial.println("ESP-NOW initialized");
 
   // esp_now callback function to process message
-  esp_now_register_recv_cb(OnDataReceive);
+  esp_now_register_recv_cb((esp_now_recv_cb_t) OnDataReceive);
   Serial.println("ESP-NOW received message callback registered");
 }
 

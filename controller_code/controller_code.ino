@@ -1,113 +1,142 @@
+/*
+  Rui Santos & Sara Santos - Random Nerd Tutorials
+  Complete project details at https://RandomNerdTutorials.com/esp-now-two-way-communication-esp32/
+  Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files.
+  The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+  esptool.py --chip esp32c3 --port /dev/ttyACM1 erase_flash
+
+  Modified by ABC RoboKits: abcrobokits.com
+*/
+
 #include <esp_now.h>
 #include <WiFi.h>
 #include <Wire.h>
 
-// six byte mac address for the controller board obtained
-// from the get_mac_address program
-uint8_t broadcastAddress[] = {0x94, 0xa9, 0x90, 0x77, 0x6a, 0x64};
+// REPLACE WITH THE MAC ADDRESS OF YOUR robot esp
+uint8_t broadcastAddress[] = {0x9C, 0x9E, 0x6E, 0xF7, 0x4F, 0x68}; //9c:9e:6e:f7:4d:74
 
-// float PositionX;
-// float PositionY;
-// float PositionZ;
+// Define variables to store desired servo rotations
+float rotationLeft;
+float rotationRight;
+float Arm;
 
-float incomingPosX;
-float incomingPosY;
-float incomingPosZ;
+// Define variables to store current servo rotations
+float incomingRotationLeft;
+float incomingRotationRight;
+float incomingArm;
 
-int ch0;
-int ch1;
-int ch2;
+// Define variables to store joystick readings
+int joystickX;
+int joystickY;
+int Button;
 
+// Variable to store if sending data was successful
 String success;
 
-typedef struct {
-  float PosX;
-  float PosY;
-  float PosZ;
-} struct_message_t;
+//Structure example to send data
+//Must match the receiver structure
+typedef struct struct_message {
+  float RotLeft;
+  float RotRight;
+  float RotArm;
+} struct_message;
 
-struct_message_t PosReadings;
-struct_message_t incomingReadings;
+// Create a struct_message (following above structure) called PosReadings to hold sensor readings
+struct_message RotReadings;
 
-esp_now_peer_info_t peerInfo;
+// Create a struct_message (following above structure) to hold incoming sensor readings
+struct_message incomingReadings;
 
-void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status){
-  Serial.printf("\r\nLast Packet Send Status:\t");
-  Serial.printf(status == ESP_NOW_SEND_SUCCESS ? "Delivery Success" : "Delivery Fail");
-  if( status == 0 ){
+// Define variable to hold peer information
+// Note: 'peer' represents the device this code communicates with
+esp_now_peer_info_t peerInfo; 
+
+// This code runs when data is sent
+void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
+  Serial.print("\r\nLast Packet Send Status:\t");
+  Serial.println(status == ESP_NOW_SEND_SUCCESS ? "Delivery Success" : "Delivery Fail");
+  if (status == 0) {
     success = "Delivery Success :)";
-  } else {
-    success = "Delivery Failure :(";
+  }
+  else {
+    success = "Delivery Fail :(";
   }
 }
 
-void OnDataReceived(const uint8_t *mac_addr, const uint8_t *incomingData, int len){
+// This code runs when data is received
+void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
   memcpy(&incomingReadings, incomingData, sizeof(incomingReadings));
-  Serial.printf("Bytes Received: %d\n", len);
-  Serial.printf("PosX: %f\n", incomingReadings.PosX);
-  Serial.printf("PosY: %f\n", incomingReadings.PosY);
-  Serial.printf("PosZ: %f\n", incomingReadings.PosZ);
-  Serial.printf("********************\n");
+  Serial.print("Bytes received: ");
+  Serial.println(len);
+  incomingRotationLeft = incomingReadings.RotLeft;
+  incomingRotationRight = incomingReadings.RotRight;
+  incomingArm = incomingReadings.RotArm;
+  Serial.print("RotLeft: ");
+  Serial.println(incomingRotationLeft);
+  Serial.print("RotRight: ");
+  Serial.println(incomingRotationRight);
+  Serial.print("RotArm: ");
+  Serial.println(incomingArm);
 }
 
 void setup() {
-  // put your setup code here, to run once:
+  // Setup with the computer to handle troubleshooting
   Serial.begin(115200);
 
   pinMode(D2, INPUT_PULLUP);
-  Serial.printf("Pin D2 set high\n");
 
+  // Set device as a Wi-Fi Station
   WiFi.mode(WIFI_STA);
-  if( esp_now_init() != ESP_OK){
-    Serial.printf("Error Initializing ESP-NOW\n");
+
+  // Connect to robot's unique wifi (this process is called ESPNow)
+  if (esp_now_init() != ESP_OK) {
+    Serial.println("Error initializing ESP-NOW");
     return;
   }
-  Serial.printf("esp_now is OK!\n");
 
-  esp_now_register_send_cb((esp_now_send_cb_t) OnDataSent);
+  // Once ESPNow is successfully completed, we will try to send data
+  // get the status of Transmitted packet of data
+  esp_now_register_send_cb((esp_now_send_cb_t)OnDataSent);
 
+  // Register peer
   memcpy(peerInfo.peer_addr, broadcastAddress, 6);
   peerInfo.channel = 0;
   peerInfo.encrypt = false;
 
-  if( esp_now_add_peer(&peerInfo) != ESP_OK){
-    Serial.printf("Failed to add peer\n");
-    return ;
+  // Add peer
+  if (esp_now_add_peer(&peerInfo) != ESP_OK) {
+    Serial.println("Failed to add peer");
+    return;
   }
-  Serial.printf("peer added\n");
-
-  esp_now_register_recv_cb((esp_now_recv_cb_t) OnDataReceived);
+  // Register for code to run when data is received
+  esp_now_register_recv_cb(esp_now_recv_cb_t(OnDataRecv));
 }
 
 void loop() {
-  // put your main code here, to run repeatedly:
 
+  joystickX = analogRead(D1);          // read the joystick
+  rotationLeft = map((joystickX), 0, 4096, 0, 180); // convert joystick position into servo rotation data
+  
+  joystickY = analogRead(D0);
+  rotationRight = map((joystickY), 0, 4096, 0, 180);
 
+  Button = digitalRead(D2);
+  Arm = map(Button, 0, 1, 0, 1); // convert joystick button into arm servo position
 
-  ch0 = analogRead(D0);
-  PosReadings.PosX = map(ch0, 0, 4096, 0, 180);
-  ch1 = analogRead(D1);
-  PosReadings.PosY = map(ch1, 0, 4096, 0, 180);
-  ch2 = analogRead(D2);
-  PosReadings.PosZ = map(ch2, 0, 4096, 0, 180);
+  // Set values to send
+  RotReadings.RotLeft = rotationLeft;
+  RotReadings.RotRight = rotationRight;
+  RotReadings.RotArm = Arm;
 
-  // PosReadings.PosX = PositionX;
-  // PosReadings.PosY = PositionY;
-  // PosReadings.PosZ = PositionZ;
+  // Send data via ESP-NOW
+  esp_err_t result = esp_now_send(broadcastAddress, (uint8_t *) &RotReadings, sizeof(RotReadings));
 
-  Serial.printf("********************\n");
-  Serial.printf("PosX: %f\n", PosReadings.PosX);
-  Serial.printf("PosY: %f\n", PosReadings.PosY);
-  Serial.printf("PosZ: %f\n", PosReadings.PosZ);
+  if (result == ESP_OK) {
+    Serial.println("Sent with success"); // tell the computer if everything sent properly
+  }
+  else {
+    Serial.println("Error sending the data"); // tell the computer there was an error
+  }
 
-  // esp_err_t result = esp_now_send(broadcastAddress, (uint8_t *) &PosReadings, sizeof(PosReadings));
-
-  // if( result == ESP_OK){
-  //   Serial.printf("Send with success\n");
-  // } else {
-  //   Serial.printf("Error sending data\n");
-  // }
-
-  delay(100);
-
+  delay(100); //wait for 0.1 seconds before starting the loop over
 }
